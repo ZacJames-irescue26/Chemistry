@@ -154,15 +154,15 @@ class Material:
 
         texture_size = 500
         texture_count = len(filenames)
-        width = 5 * texture_size
-        height = texture_count * texture_size
-        self.textureData = Image.new(mode = "RGBA", size = (width, height))
+        #width = 5 * texture_size
+        #height = texture_count * texture_size
+        #self.textureData = Image.new(mode = "RGBA", size = (width, height))
         for i in range(texture_count):
             with Image.open(f"{filenames}", mode = "r") as img:
                 img = img.convert("RGBA")
-                self.textureData.paste(img, (0, (texture_count - i - 1) * texture_size))
+                width, height = img.size
             ## add more images here
-        img_data = bytes(self.textureData.tobytes())
+        img_data = bytes(img.tobytes())
         self.texture = glGenTextures(1)
         glBindTexture(GL_TEXTURE_2D, self.texture)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
