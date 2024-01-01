@@ -7,6 +7,35 @@ from OpenGL.GL.shaders import compileProgram, compileShader
 import imgui
 from imgui.integrations.glfw import GlfwRenderer
 from PIL import Image
+import pyrr
+
+def create_shader(vertex_filepath: str, fragment_filepath: str) -> int:
+    """
+        Compile and link shader modules to make a shader program.
+
+        Parameters:
+
+            vertex_filepath: path to the text file storing the vertex
+                            source code
+            
+            fragment_filepath: path to the text file storing the
+                                fragment source code
+        
+        Returns:
+
+            A handle to the created shader program
+    """
+
+    with open(vertex_filepath,'r') as f:
+        vertex_src = f.readlines()
+
+    with open(fragment_filepath,'r') as f:
+        fragment_src = f.readlines()
+    
+    shader = compileProgram(compileShader(vertex_src, GL_VERTEX_SHADER),
+                            compileShader(fragment_src, GL_FRAGMENT_SHADER))
+    
+    return shader
 
 class App:
     def __init__(self):
@@ -30,13 +59,56 @@ class App:
         self.shader = self.CreateShader("Shaders/vertex.txt", "Shaders/fragment.txt")
         glUseProgram(self.shader)
         glUniform1i(glGetUniformLocation(self.shader, "imageTexture"), 0)
-        self.triangle = Triangle()
         self.texture = Material("Textures/container2.png")
+        glEnable(GL_DEPTH_TEST)
+        
+        self._create_assets()
+
+        self._set_onetime_uniforms()
+
+        self._get_uniform_locations()
+
         imgui.create_context()
         self.impl = GlfwRenderer(self.window)
         self.show_custom_window = True
 
         self.mainLoop()
+    def _create_assets(self) -> None:
+        """
+        Create all of the assets needed for drawing.
+        """
+        self.cube = Entity(
+        position = [0,0,-3],
+        eulers = [0,0,0]
+        )
+        self.cube_mesh = Mesh("Models/sphere.obj")
+        self.shader = create_shader(
+            vertex_filepath = "Shaders/vertex.txt", 
+            fragment_filepath = "Shaders/fragment.txt")
+    def _set_onetime_uniforms(self) -> None:
+        """
+            Some shader data only needs to be set once.
+        """
+
+        glUseProgram(self.shader)
+        glUniform1i(glGetUniformLocation(self.shader, "imageTexture"), 0)
+
+        projection_transform = pyrr.matrix44.create_perspective_projection(
+            fovy = 45, aspect = 640/480, 
+            near = 0.1, far = 1000, dtype=np.float32
+        )
+        glUniformMatrix4fv(
+            glGetUniformLocation(self.shader,"projection"),
+            1, GL_FALSE, projection_transform
+        )
+
+    def _get_uniform_locations(self) -> None:
+        """
+            Query and store the locations of shader uniforms
+        """
+
+        glUseProgram(self.shader)
+        self.modelMatrixLocation = glGetUniformLocation(self.shader,"model")
 
     def mainLoop(self):
         running = True
@@ -45,11 +117,20 @@ class App:
         # Render here, e.g. using pyOpenGL
             glfw.poll_events()
             self.impl.process_inputs()
-            glClear(GL_COLOR_BUFFER_BIT)
+            #update cube
+            self.cube.update()
+            
+            #refresh screen
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
             glUseProgram(self.shader)
+
+            
+            glUniformMatrix4fv(
+                self.modelMatrixLocation, 1, GL_FALSE, 
+                self.cube.get_model_transform())
             self.texture.use()
-            glBindVertexArray(self.triangle.vao)
-            glDrawArrays(GL_TRIANGLES, 0, self.triangle.vertex_count)
+            self.cube_mesh.arm_for_drawing()
+            self.cube_mesh.draw()
             imgui.new_frame()
 
             if imgui.begin_main_menu_bar():
@@ -121,33 +202,186 @@ class App:
     
 
 
-class Triangle:
-    def __init__(self):
-        # x,y,z,r,g,b,s,t
-        self.vertices = (
-            -0.5, -0.5, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0,
-            0.5, -0.5, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0,
-            0.0, 0.5, 0.0, 0.0, 0.0, 1.0, 0.5, 0.0
-        )
-        self.vertices = np.array(self.vertices, dtype=np.float32)
+class CubeMesh:
+    """
+        Used to draw a cube.
+    """
 
-        self.vertex_count = 3
+    def __init__(self):
+
+        # x, y, z, s, t
+        vertices = (
+            -0.5, -0.5, -0.5, 0, 0,
+             0.5, -0.5, -0.5, 1, 0,
+             0.5,  0.5, -0.5, 1, 1,
+
+             0.5,  0.5, -0.5, 1, 1,
+            -0.5,  0.5, -0.5, 0, 1,
+            -0.5, -0.5, -0.5, 0, 0,
+
+            -0.5, -0.5,  0.5, 0, 0,
+             0.5, -0.5,  0.5, 1, 0,
+             0.5,  0.5,  0.5, 1, 1,
+
+             0.5,  0.5,  0.5, 1, 1,
+            -0.5,  0.5,  0.5, 0, 1,
+            -0.5, -0.5,  0.5, 0, 0,
+
+            -0.5,  0.5,  0.5, 1, 0,
+            -0.5,  0.5, -0.5, 1, 1,
+            -0.5, -0.5, -0.5, 0, 1,
+
+            -0.5, -0.5, -0.5, 0, 1,
+            -0.5, -0.5,  0.5, 0, 0,
+            -0.5,  0.5,  0.5, 1, 0,
+
+             0.5,  0.5,  0.5, 1, 0,
+             0.5,  0.5, -0.5, 1, 1,
+             0.5, -0.5, -0.5, 0, 1,
+
+             0.5, -0.5, -0.5, 0, 1,
+             0.5, -0.5,  0.5, 0, 0,
+             0.5,  0.5,  0.5, 1, 0,
+
+            -0.5, -0.5, -0.5, 0, 1,
+             0.5, -0.5, -0.5, 1, 1,
+             0.5, -0.5,  0.5, 1, 0,
+
+             0.5, -0.5,  0.5, 1, 0,
+            -0.5, -0.5,  0.5, 0, 0,
+            -0.5, -0.5, -0.5, 0, 1,
+
+            -0.5,  0.5, -0.5, 0, 1,
+             0.5,  0.5, -0.5, 1, 1,
+             0.5,  0.5,  0.5, 1, 0,
+
+             0.5,  0.5,  0.5, 1, 0,
+            -0.5,  0.5,  0.5, 0, 0,
+            -0.5,  0.5, -0.5, 0, 1
+        )
+        self.vertex_count = len(vertices)//5
+        vertices = np.array(vertices, dtype=np.float32)
 
         self.vao = glGenVertexArrays(1)
         glBindVertexArray(self.vao)
         self.vbo = glGenBuffers(1)
         glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
-        glBufferData(GL_ARRAY_BUFFER, self.vertices.nbytes, self.vertices, GL_STATIC_DRAW)
+        glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
+
+        glEnableVertexAttribArray(0)
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 20, ctypes.c_void_p(0))
+
+        glEnableVertexAttribArray(1)
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 20, ctypes.c_void_p(12))
+    
+    def arm_for_drawing(self) -> None:
+        """
+            Arm the triangle for drawing.
+        """
+        glBindVertexArray(self.vao)
+    
+    def draw(self) -> None:
+        """
+            Draw the triangle.
+        """
+
+        glDrawArrays(GL_TRIANGLES, 0, self.vertex_count)
+
+    def destroy(self) -> None:
+        """
+            Free any allocated memory.
+        """
+        
+        glDeleteVertexArrays(1,(self.vao,))
+        glDeleteBuffers(1,(self.vbo,))
+
+class Mesh:
+    def __init__(self, filename):
+
+        vertices = self.loadmesh(filename)
+        self.vertex_count = len(vertices)//8
+        vertices = np.array(vertices, dtype=np.float32)
+
+        self.vao = glGenVertexArrays(1)
+        glBindVertexArray(self.vao)
+        self.vbo = glGenBuffers(1)
+        glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
+        glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
+
         glEnableVertexAttribArray(0)
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 32, ctypes.c_void_p(0))
-        glEnableVertexAttribArray(1)
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 32, ctypes.c_void_p(12))
-        glEnableVertexAttribArray(2)
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 32, ctypes.c_void_p(24))
 
-    def destroy(self):
-        glDeleteVertexArrays(1, (self.vao,))
-        glDeleteBuffers(1, (self.vbo,))
+        glEnableVertexAttribArray(1)
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 32, ctypes.c_void_p(12))
+    def loadmesh(self, filename: str) -> list[float]:
+        v = []
+        vt = []
+        vn = []
+
+        vertices = []
+
+        with open(filename, "r") as file:
+            line = file.readline()
+
+            while line:
+            
+                words = line.split(" ")
+                if words[0] == "v":
+                    v.append(self.read_vertex_data(words))
+                elif words[0] == "vt":
+                    vt.append(self.read_TexCoords_data(words))
+                elif words[0] == "vn":
+                    vn.append(self.read_normal_data(words))
+                elif words[0] == "f":
+                    self.read_face_data(words, v, vt, vn, vertices)
+                line = file.readline()
+
+        return vertices
+
+    def read_vertex_data(self, words: list[str]) -> list[float]:
+        return [float(words[1]), float(words[2]), float(words[3])] 
+    def read_TexCoords_data(self, words: list[str]) -> list[float]:
+        return [float(words[1]), float(words[2])] 
+    def read_normal_data(self, words: list[str]) -> list[float]:
+        return [float(words[1]), float(words[2]), float(words[3])] 
+    def read_face_data(self, words: list[str], v: list[list[float]], vt: list[list[float]], vn: list[list[float]], vertices: list[float]) -> None:
+        triangleCount = len(words) - 3
+
+        for i in range(triangleCount):
+            self.make_corner(words[1], v, vt, vn, vertices)
+            self.make_corner(words[2 + i], v, vt, vn, vertices)
+            self.make_corner(words[3 + i], v, vt, vn, vertices)
+
+    def make_corner(self, cornerdescription: str, v: list[list[float]], vt: list[list[float]], vn: list[list[float]], vertices: list[float]) -> None:
+
+        v_vt_vn = cornerdescription.split("/")
+
+        for element in v[int(v_vt_vn[0]) -1 ]:
+            vertices.append(element)
+        for element in vt[int(v_vt_vn[1]) -1 ]:
+            vertices.append(element)
+        for element in vn[int(v_vt_vn[2]) -1 ]:
+            vertices.append(element)
+    def arm_for_drawing(self) -> None:
+        """
+            Arm the triangle for drawing.
+        """
+        glBindVertexArray(self.vao)
+    
+    def draw(self) -> None:
+        """
+            Draw the triangle.
+        """
+
+        glDrawArrays(GL_TRIANGLES, 0, self.vertex_count)
+
+    def destroy(self) -> None:
+        """
+            Free any allocated memory.
+        """
+        
+        glDeleteVertexArrays(1,(self.vao,))
+        glDeleteBuffers(1,(self.vbo,))
 
 class Material:
     def __init__(self, filenames):
@@ -179,9 +413,64 @@ class Material:
     def destroy(self):
         glDeleteTextures(1, (self.texture,))
         
+class Entity:
+    """
+        A basic object in the world, with a position and rotation.
+    """
+
+
+    def __init__(self, position: list[float], eulers: list[float]):
+        """
+            Initialize the entity.
+
+            Parameters:
+
+                position: the position of the entity.
+
+                eulers: the rotation of the entity
+                        about each axis.
+        """
+
+        self.position = np.array(position, dtype=np.float32)
+        self.eulers = np.array(eulers, dtype=np.float32)
+    
+    def update(self) -> None:
+        """
+            Update the object, this is hard coded for now.
+        """
+
+        self.eulers[1] += 0.25
+        
+        if self.eulers[1] > 360:
+            self.eulers[1] -= 360
+
+    def get_model_transform(self) -> np.ndarray:
+        """
+            Returns the entity's model to world
+            transformation matrix.
+        """
+
+        model_transform = pyrr.matrix44.create_identity(dtype=np.float32)
+
+        model_transform = pyrr.matrix44.multiply(
+            m1=model_transform, 
+            m2=pyrr.matrix44.create_from_axis_rotation(
+                axis = [0, 1, 0],
+                theta = np.radians(self.eulers[1]), 
+                dtype = np.float32
+            )
+        )
+
+        return pyrr.matrix44.multiply(
+            m1=model_transform, 
+            m2=pyrr.matrix44.create_from_translation(
+                vec=np.array(self.position),dtype=np.float32
+            )
+        )
+
+
 def main():
     app = App()
-
 
     
 
