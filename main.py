@@ -42,13 +42,13 @@ class App:
         if not glfw.init():
             print("Failed to init GLFW")
             return
-        self.ScreenWidth = 800
-        self.ScreenHeight = 600
+        self.ScreenWidth = 1280
+        self.ScreenHeight = 900
         glfw.window_hint(GLFW_CONSTANTS.GLFW_CONTEXT_VERSION_MAJOR, 4)
         glfw.window_hint(GLFW_CONSTANTS.GLFW_CONTEXT_VERSION_MINOR, 3)
         glfw.window_hint(GLFW_CONSTANTS.GLFW_OPENGL_PROFILE, GLFW_CONSTANTS.GLFW_OPENGL_CORE_PROFILE)
         glfw.window_hint(GLFW_CONSTANTS.GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE)
-        self.window = glfw.create_window(640, 480, "Hello World", None, None)
+        self.window = glfw.create_window(self.ScreenWidth, self.ScreenHeight, "Hello World", None, None)
         window = self.window
         if not self.window:
             glfw.terminate()
@@ -69,6 +69,8 @@ class App:
         self._get_uniform_locations()
 
         imgui.create_context()
+        self.io = imgui.get_io()
+        self.io.config_flags |= imgui.CONFIG_DOCKING_ENABLE
         self.impl = GlfwRenderer(self.window)
         self.show_custom_window = True
 
@@ -94,7 +96,7 @@ class App:
         glUniform1i(glGetUniformLocation(self.shader, "imageTexture"), 0)
 
         projection_transform = pyrr.matrix44.create_perspective_projection(
-            fovy = 45, aspect = 640/480, 
+            fovy = 45, aspect = self.ScreenWidth/self.ScreenHeight, 
             near = 0.1, far = 1000, dtype=np.float32
         )
         glUniformMatrix4fv(
@@ -155,7 +157,7 @@ class App:
                     imgui.extra.text_ansi_colored("Eggs", 0.2, 1.0, 0.0)
                 imgui.end()
 
-            imgui.show_test_window()
+            #imgui.show_test_window()
             # imgui.show_test_window()
 
             imgui.render()
@@ -173,21 +175,79 @@ class App:
         self.texture.destroy()
         glDeleteProgram(self.shader)
         glfw.terminate()
+    def docking_space(self, name: str):
+        flags = (imgui.WINDOW_MENU_BAR 
+        | imgui.WINDOW_NO_DOCKING 
+        # | imgui.WINDOW_NO_BACKGROUND
+        | imgui.WINDOW_NO_TITLE_BAR
+        | imgui.WINDOW_NO_COLLAPSE
+        | imgui.WINDOW_NO_RESIZE
+        | imgui.WINDOW_NO_MOVE
+        | imgui.WINDOW_NO_BRING_TO_FRONT_ON_FOCUS
+        | imgui.WINDOW_NO_NAV_FOCUS
+        )
 
+        viewport = imgui.get_main_viewport()
+        x, y = viewport.pos
+        w, h = viewport.size
+        imgui.set_next_window_position(x, y)
+        imgui.set_next_window_size(w, h)
+        # imgui.set_next_window_viewport(viewport.id)
+        imgui.push_style_var(imgui.STYLE_WINDOW_BORDERSIZE, 0.0)
+        imgui.push_style_var(imgui.STYLE_WINDOW_ROUNDING, 0.0)
+
+        # When using ImGuiDockNodeFlags_PassthruCentralNode, DockSpace() will render our background and handle the pass-thru hole, so we ask Begin() to not render a background.
+        # local window_flags = self.window_flags
+        # if bit.band(self.dockspace_flags, ) ~= 0 then
+        #     window_flags = bit.bor(window_flags, const.ImGuiWindowFlags_.NoBackground)
+        # end
+
+        # Important: note that we proceed even if Begin() returns false (aka window is collapsed).
+        # This is because we want to keep our DockSpace() active. If a DockSpace() is inactive,
+        # all active windows docked into it will lose their parent and become undocked.
+        # We cannot preserve the docking relationship between an active window and an inactive docking, otherwise
+        # any change of dockspace/settings would lead to windows being stuck in limbo and never being visible.
+        imgui.push_style_var(imgui.STYLE_WINDOW_PADDING, (0, 0))
+        imgui.begin(name, None, flags)
+        imgui.pop_style_var()
+        imgui.pop_style_var(2)
+
+        # DockSpace
+        dockspace_id = imgui.get_id(name)
+        imgui.dockspace(dockspace_id, (0, 0), imgui.DOCKNODE_PASSTHRU_CENTRAL_NODE)
+
+        imgui.end()
 
     def Imgui_Frame(self):
+        
+        imgui.new_frame()
+
+        self.docking_space('docking_space')
+
         if imgui.begin_main_menu_bar():
             if imgui.begin_menu("File", True):
-                clicked_quit, selected_quit = imgui.menu_item("Quit", "Cmd+Q", False, True)
+
+                clicked_quit, selected_quit = imgui.menu_item(
+                    "Quit", 'Cmd+Q', False, True
+                )
+
                 if clicked_quit:
-                    sys.exit(0)
+                    exit(1)
+
                 imgui.end_menu()
             imgui.end_main_menu_bar()
-        imgui.show_test_window()
-        imgui.begin("Custom window", True)
-        imgui.text("Bar")
-        imgui.text_colored("Eggs", 0.2, 1.0, 0.0)
-        imgui.end()
+
+        if show_custom_window:
+            is_expand, show_custom_window = imgui.begin("Custom window", True)
+            if is_expand:
+                imgui.text("Bar")
+                imgui.text_ansi("B\033[31marA\033[mnsi ")
+                imgui.text_ansi_colored("Eg\033[31mgAn\033[msi ", 0.2, 1., 0.)
+                imgui.extra.text_ansi_colored("Eggs", 0.2, 1., 0.)
+            imgui.end()
+
+        show_test_window()
+        # imgui.show_test_window()
 
     def CreateShader(self, vertexFilePath, fragmentFilePath):
         with open(vertexFilePath, 'r') as f:
