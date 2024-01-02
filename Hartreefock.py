@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from pyqint import  Molecule, HF
+from pyqint import pyqint, Molecule, HF, GeometryOptimization
 from scipy.interpolate import interp1d
 
 #
@@ -29,29 +29,8 @@ def main():
     plt.grid(linestyle='--')
     plt.legend()
     plt.tight_layout()
-    plt.show()
-    
-    # find index of minimum value for the energies
-    index_min = min(range(len(f(xx2))), key=f(xx2).__getitem__)
-    emin = f(xx2)[index_min]
-    print('Minimum value (%f Ht) found at: r=%f' % (emin,xx2[index_min]))
-    
-    # calculate binding energy
-    ebind = 2*-0.424413181578 - emin
-    print('Binding energy: %f Ht' % ebind)
-    
-    # result using STO-3g basis set for H
-    eh = optimize_hydrogen_atom()
-    ebind = 2*eh - emin
-    print('Binding energy (sto-3g): %f Ht' % ebind)
-
-def optimize_hydrogen_atom():
-    mol = Molecule('H')
-    mol.add_atom('H', 0.0, 0.0, 0.0, unit='angstrom')
-    cgfs, nuclei = mol.build_basis('sto3g')
-    integrator = PyQInt()
-    ekin = integrator.kinetic(cgfs[0], cgfs[0])
-    enuc = integrator.nuclear(cgfs[0], cgfs[0], [0,0,0], 1)
-    return ekin + enuc
+   # plt.show()
+    res = GeometryOptimization(verbose=False).run(mol, 'sto3g')
+    print(res)    
 
 main()
